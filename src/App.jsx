@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RotateCcw, BarChart2, X, HelpCircle } from 'lucide-react';
 
 /**
- * ملاحظة: تم إدراج القاموس والمنطق هنا لضمان عمل المعاينة في Canvas.
- * تم إصلاح استجابة لوحة المفاتيح وتلوين المربعات أثناء الكتابة وبعد الإدخال.
+ * KALIMA - Arabic Wordle
+ * تم إصلاح التحقق من القاموس وتوقيت الألوان.
  */
 
-// --- الوظائف المساعدة والقاموس (مدمجة لضمان التشغيل) ---
+// --- البيانات والوظائف المساعدة (محاكاة src/dictionary.js) ---
 const normalize = (word) => {
   if (!word) return "";
   return word
@@ -16,9 +16,13 @@ const normalize = (word) => {
     .replace(/[\u064B-\u065F]/g, ""); 
 };
 
-const COMMON_ANSWERS = ["طاولة", "مكتبة", "تفاحة", "خزانة", "نافذة", "شاشات", "أبواب", "أقلام", "أوراق", "دفاتر", "مسطرة", "مفتاح", "سيارة", "طيارة", "دراجة", "حافلة", "شاحنة", "باخرة", "سفينة", "محطات", "مدينة", "قريات", "حديقة", "غابات", "صحراء", "هضبات", "أنهار", "أمواج", "كواكب", "أشعات", "أتربة", "أحجار", "أشجار", "أزهار", "وردات", "نخلات", "أعناب", "موزات", "جزرات", "بصلات", "ليمون", "خوخات", "توتات", "رمانة", "بطيخة", "نعناع"];
-const ANSWERS_POOL = COMMON_ANSWERS.filter(w => w.length === 5);
-const VALID_GUESS_SET = new Set(COMMON_ANSWERS.map(normalize));
+// القاموس الأساسي للمحاولات والإجابات
+const DICTIONARY = [
+  "طاولة", "مكتبة", "تفاحة", "خزانة", "نافذة", "شاشات", "أبواب", "أقلام", "أوراق", "دفاتر", "مسطرة", "مفتاح", "سيارة", "طيارة", "دراجة", "حافلة", "شاحنة", "باخرة", "سفينة", "محطات", "مدينة", "قريات", "حديقة", "غابات", "صحراء", "هضبات", "أنهار", "أمواج", "كواكب", "أشعات", "أتربة", "أحجار", "أشجار", "أزهار", "وردات", "نخلات", "أعناب", "موزات", "جزرات", "بصلات", "ليمون", "خوخات", "توتات", "رمانة", "بطيخة", "نعناع", "كتابة", "مدرسة", "كرسي", "مكتب", "منزل"
+];
+
+const VALID_GUESS_SET = new Set(DICTIONARY.map(normalize));
+const ANSWERS_POOL = DICTIONARY.filter(w => w.length === 5);
 
 const App = () => {
   const [targetWord, setTargetWord] = useState("");
@@ -51,7 +55,6 @@ const App = () => {
     if (saved) setStats(JSON.parse(saved));
   }, [pickWord]);
 
-  // دالة التعامل مع المفاتيح (سواء من الشاشة أو لوحة المفاتيح)
   const onKey = useCallback((key) => {
     if (gameState !== "playing" || isAnimating) return;
 
@@ -63,12 +66,20 @@ const App = () => {
         return;
       }
 
+      // التحقق الصارم من وجود الكلمة في القاموس
+      if (!VALID_GUESS_SET.has(normalize(currentGuess))) {
+        setErrorMsg("ليست في القاموس");
+        setShakeRow(activeRow);
+        setTimeout(() => { setErrorMsg(""); setShakeRow(-1); }, 1000);
+        return;
+      }
+
       setIsAnimating(true);
       const newGuesses = [...guesses];
       newGuesses[activeRow] = currentGuess;
       setGuesses(newGuesses);
 
-      // أنيميشن القلب وتحديث الحالة
+      // تأخير تحديث الحالة حتى ينتهي أنيميشن القلب (Flip)
       setTimeout(() => {
         const isWin = normalize(currentGuess) === normalize(targetWord);
         const newStatuses = { ...letterStatuses };
@@ -103,14 +114,12 @@ const App = () => {
     } else if (key === "Backspace" || key === "حذف") {
       setCurrentGuess(prev => prev.slice(0, -1));
     } else if (currentGuess.length < 5) {
-      // التأكد من أن المفتاح المدخل هو حرف عربي
       if (/^[\u0600-\u06FF]$/.test(key)) {
         setCurrentGuess(prev => prev + key);
       }
     }
   }, [currentGuess, activeRow, guesses, targetWord, gameState, isAnimating, letterStatuses]);
 
-  // مستمع لوحة مفاتيح الكمبيوتر
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -135,21 +144,13 @@ const App = () => {
     setTimeout(() => setShowStats(true), 1200);
   };
 
-  // دالة تحديد لون المربع
-  const getTileStyles = (char, index, rowIdx) => {
-    // إذا لم يتم إرسال الصف بعد
-    if (rowIdx >= activeRow && gameState === "playing") {
-      if (char) return "border-[#565758] text-white animate-pop"; // حرف مكتوب لكن لم يرسل
-      return "border-[#3a3a3c]"; // مربع فارغ
-    }
-    
-    // الصفوف المرسلة (الملونة)
+  // دالة تحديد لون المربع الخلفي فقط (لحل مشكلة التلوين قبل القلب)
+  const getResultColor = (char, index) => {
     const nTarget = normalize(targetWord);
     const nChar = normalize(char);
-    
-    if (nChar === nTarget[index]) return "bg-[#6aaa64] border-[#6aaa64] text-white";
-    if (nTarget.includes(nChar)) return "bg-[#c9b458] border-[#c9b458] text-white";
-    return "bg-[#3a3a3c] border-[#3a3a3c] text-white";
+    if (nChar === nTarget[index]) return "bg-[#6aaa64] border-[#6aaa64]";
+    if (nTarget.includes(nChar)) return "bg-[#c9b458] border-[#c9b458]";
+    return "bg-[#3a3a3c] border-[#3a3a3c]";
   };
 
   const keyboardRows = [
@@ -164,7 +165,7 @@ const App = () => {
       
       <header className="flex justify-between items-center border-b border-[#3a3a3c] py-2 mb-4">
         <div className="flex gap-4">
-          <HelpCircle className="text-zinc-400 cursor-pointer" size={26} onClick={() => alert("خمّن الكلمة المكونة من 5 حروف.")} />
+          <HelpCircle className="text-zinc-400 cursor-pointer" size={26} onClick={() => alert("خمّن الكلمة من القاموس.")} />
           <RotateCcw className="text-zinc-400 cursor-pointer" size={26} onClick={() => !isAnimating && pickWord()} />
         </div>
         <h1 className="text-3xl font-black tracking-tighter">كَلِمَة</h1>
@@ -178,7 +179,7 @@ const App = () => {
             <div key={r} className={`flex gap-1.5 ${shakeRow === r ? 'animate-shake' : ''}`}>
               {Array(5).fill("").map((_, c) => {
                 const char = r === activeRow ? currentGuess[c] : g[c];
-                const styles = getTileStyles(char, c, r);
+                const resultColor = getResultColor(char, c);
                 
                 return (
                   <div key={c} className="w-12 h-12 sm:w-14 sm:h-14 perspective-1000">
@@ -186,12 +187,12 @@ const App = () => {
                       className={`relative w-full h-full text-center transition-transform duration-700 preserve-3d ${isSubmitted && g ? 'animate-flip' : ''}`} 
                       style={{ animationDelay: `${isSubmitted ? c * 300 : 0}ms` }}
                     >
-                      {/* المربع قبل التلوين أو أثناء الكتابة */}
-                      <div className={`absolute inset-0 border-2 flex items-center justify-center text-2xl font-bold backface-hidden rounded-sm ${styles}`}>
+                      {/* الوجه الأمامي: يبقى بدون لون خلفية حتى أثناء الأنيميشن */}
+                      <div className={`absolute inset-0 border-2 flex items-center justify-center text-2xl font-bold backface-hidden rounded-sm ${char ? 'border-[#565758]' : 'border-[#3a3a3c]'} bg-[#121213]`}>
                         {char || ""}
                       </div>
-                      {/* المربع بعد التلوين (الوجه الخلفي) */}
-                      <div className={`absolute inset-0 flex items-center justify-center text-2xl font-bold backface-hidden rotate-x-180 rounded-sm ${styles}`}>
+                      {/* الوجه الخلفي: يظهر اللون فقط هنا */}
+                      <div className={`absolute inset-0 flex items-center justify-center text-2xl font-bold backface-hidden rotate-x-180 rounded-sm border-0 ${resultColor}`}>
                         {char || ""}
                       </div>
                     </div>
@@ -246,8 +247,10 @@ const App = () => {
       )}
 
       <style>{`
-        @keyframes flip { 0% { transform: rotateX(0deg); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0deg); } }
-        @keyframes pop { 0% { transform: scale(1); border-color: #3a3a3c; } 50% { transform: scale(1.1); border-color: #565758; } 100% { transform: scale(1); border-color: #565758; } }
+        @keyframes flip { 
+          0% { transform: rotateX(0deg); } 
+          100% { transform: rotateX(180deg); } 
+        }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
         @keyframes fade { 0%, 100% { opacity: 0; } 10%, 90% { opacity: 1; } }
         .perspective-1000 { perspective: 1000px; }
@@ -255,7 +258,6 @@ const App = () => {
         .backface-hidden { backface-visibility: hidden; }
         .rotate-x-180 { transform: rotateX(180deg); }
         .animate-flip { animation: flip 0.6s forwards ease-in-out; }
-        .animate-pop { animation: pop 0.1s ease-in-out forwards; }
         .animate-shake { animation: shake 0.4s ease-in-out; }
         .animate-fade { animation: fade 1.5s forwards; }
       `}</style>
