@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RotateCcw, BarChart2, X, HelpCircle } from 'lucide-react';
-// استيراد القاموس ووظيفة المعالجة من الملف المنفصل (جاهز لـ GitHub)
+// استيراد القاموس ودالة المعالجة من الملف المجاور
 import { DICTIONARY, normalize } from './dictionary';
 
 /**
  * KALIMA - Arabic Wordle (GitHub Version)
- * ملاحظة للمستخدم: هذه النسخة تعتمد على استيراد القاموس من ملف خارجي.
- * تم إصلاح منطق التحقق لضمان مطابقة الكلمات حتى مع اختلاف التشكيل أو الهمزات.
+ * كود التطبيق الأساسي مع الربط بملف القاموس الخارجي
  */
 
-// تصفية الكلمات التي طولها 5 أحرف فقط من القاموس المستورد
-const VALID_WORDS = DICTIONARY.filter(w => w.length === 5);
+// تصفية الكلمات التي طولها 5 أحرف فقط لتكون أهدافاً للعبة
+const VALID_TARGETS = DICTIONARY.filter(w => normalize(w).length === 5);
 
-// إنشاء مجموعة للتحقق السريع، مع معالجة كل كلمات القاموس لضمان المطابقة الدقيقة
+// إنشاء مجموعة للتحقق السريع من التخمينات بعد معالجتها
 const VALID_GUESS_SET = new Set(DICTIONARY.map(w => normalize(w)));
 
 const App = () => {
@@ -28,9 +27,10 @@ const App = () => {
   const [shakeRow, setShakeRow] = useState(-1);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // اختيار كلمة عشوائية
   const pickWord = useCallback(() => {
-    if (VALID_WORDS.length === 0) return;
-    const random = VALID_WORDS[Math.floor(Math.random() * VALID_WORDS.length)];
+    if (VALID_TARGETS.length === 0) return;
+    const random = VALID_TARGETS[Math.floor(Math.random() * VALID_TARGETS.length)];
     setTargetWord(random);
     setGuesses(Array(8).fill(""));
     setActiveRow(0);
@@ -58,9 +58,8 @@ const App = () => {
         return;
       }
 
-      // إصلاح المنطق: نقوم بمعالجة التخمين الحالي ومقارنته بالمجموعة المعالجة مسبقاً
+      // التحقق من القاموس المستورد
       const normalizedGuess = normalize(currentGuess);
-      
       if (!VALID_GUESS_SET.has(normalizedGuess)) {
         setErrorMsg("ليست في القاموس");
         setShakeRow(activeRow);
@@ -73,8 +72,9 @@ const App = () => {
       newGuesses[activeRow] = currentGuess;
       setGuesses(newGuesses);
 
+      // توقيت ظهور الألوان بعد أنيميشن القلب
       setTimeout(() => {
-        const isWin = normalize(currentGuess) === normalize(targetWord);
+        const isWin = normalizedGuess === normalize(targetWord);
         const newStatuses = { ...letterStatuses };
         const nTarget = normalize(targetWord);
 
