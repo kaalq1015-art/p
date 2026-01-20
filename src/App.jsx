@@ -1,28 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RotateCcw, BarChart2, X, HelpCircle } from 'lucide-react';
+// استيراد القاموس ووظيفة المعالجة من الملف المنفصل (جاهز لـ GitHub)
+import { DICTIONARY, normalize } from './dictionary';
 
 /**
- * KALIMA - Arabic Wordle
- * تم إصلاح التحقق من القاموس وتوقيت الألوان.
+ * KALIMA - Arabic Wordle (GitHub Version)
+ * هذه النسخة مخصصة للعمل مع ملف dictionary.js الخارجي.
  */
 
-// --- البيانات والوظائف المساعدة (محاكاة src/dictionary.js) ---
-const normalize = (word) => {
-  if (!word) return "";
-  return word
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .replace(/[\u064B-\u065F]/g, ""); 
-};
-
-// القاموس الأساسي للمحاولات والإجابات
-const DICTIONARY = [
-  "طاولة", "مكتبة", "تفاحة", "خزانة", "نافذة", "شاشات", "أبواب", "أقلام", "أوراق", "دفاتر", "مسطرة", "مفتاح", "سيارة", "طيارة", "دراجة", "حافلة", "شاحنة", "باخرة", "سفينة", "محطات", "مدينة", "قريات", "حديقة", "غابات", "صحراء", "هضبات", "أنهار", "أمواج", "كواكب", "أشعات", "أتربة", "أحجار", "أشجار", "أزهار", "وردات", "نخلات", "أعناب", "موزات", "جزرات", "بصلات", "ليمون", "خوخات", "توتات", "رمانة", "بطيخة", "نعناع", "كتابة", "مدرسة", "كرسي", "مكتب", "منزل"
-];
-
+// تصفية الكلمات التي طولها 5 أحرف فقط من القاموس المستورد
+const VALID_WORDS = DICTIONARY.filter(w => w.length === 5);
+// إنشاء مجموعة للتحقق السريع من الكلمات المدخلة (بعد معالجتها)
 const VALID_GUESS_SET = new Set(DICTIONARY.map(normalize));
-const ANSWERS_POOL = DICTIONARY.filter(w => w.length === 5);
 
 const App = () => {
   const [targetWord, setTargetWord] = useState("");
@@ -37,8 +26,10 @@ const App = () => {
   const [shakeRow, setShakeRow] = useState(-1);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // اختيار كلمة عشوائية من القاموس المستورد
   const pickWord = useCallback(() => {
-    const random = ANSWERS_POOL[Math.floor(Math.random() * ANSWERS_POOL.length)];
+    if (VALID_WORDS.length === 0) return;
+    const random = VALID_WORDS[Math.floor(Math.random() * VALID_WORDS.length)];
     setTargetWord(random);
     setGuesses(Array(8).fill(""));
     setActiveRow(0);
@@ -66,8 +57,9 @@ const App = () => {
         return;
       }
 
-      // التحقق الصارم من وجود الكلمة في القاموس
-      if (!VALID_GUESS_SET.has(normalize(currentGuess))) {
+      // التحقق الصارم: الكلمة يجب أن تكون موجودة في dictionary.js
+      const normalizedGuess = normalize(currentGuess);
+      if (!VALID_GUESS_SET.has(normalizedGuess)) {
         setErrorMsg("ليست في القاموس");
         setShakeRow(activeRow);
         setTimeout(() => { setErrorMsg(""); setShakeRow(-1); }, 1000);
@@ -79,9 +71,9 @@ const App = () => {
       newGuesses[activeRow] = currentGuess;
       setGuesses(newGuesses);
 
-      // تأخير تحديث الحالة حتى ينتهي أنيميشن القلب (Flip)
+      // توقيت ظهور الألوان والنتائج
       setTimeout(() => {
-        const isWin = normalize(currentGuess) === normalize(targetWord);
+        const isWin = normalizedGuess === normalize(targetWord);
         const newStatuses = { ...letterStatuses };
         const nTarget = normalize(targetWord);
 
@@ -109,7 +101,7 @@ const App = () => {
           setCurrentGuess("");
           setIsAnimating(false);
         }
-      }, 2000);
+      }, 2000); 
 
     } else if (key === "Backspace" || key === "حذف") {
       setCurrentGuess(prev => prev.slice(0, -1));
@@ -144,7 +136,6 @@ const App = () => {
     setTimeout(() => setShowStats(true), 1200);
   };
 
-  // دالة تحديد لون المربع الخلفي فقط (لحل مشكلة التلوين قبل القلب)
   const getResultColor = (char, index) => {
     const nTarget = normalize(targetWord);
     const nChar = normalize(char);
@@ -161,38 +152,40 @@ const App = () => {
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-[#121213] text-white overflow-hidden p-2 touch-none" dir="rtl">
-      {errorMsg && <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-2 rounded font-bold z-[100] animate-fade">{errorMsg}</div>}
+      {errorMsg && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-2 rounded font-bold z-[100] animate-fade shadow-lg">
+          {errorMsg}
+        </div>
+      )}
       
-      <header className="flex justify-between items-center border-b border-[#3a3a3c] py-2 mb-4">
+      <header className="flex justify-between items-center border-b border-[#3a3a3c] py-2 mb-4 px-2">
         <div className="flex gap-4">
-          <HelpCircle className="text-zinc-400 cursor-pointer" size={26} onClick={() => alert("خمّن الكلمة من القاموس.")} />
-          <RotateCcw className="text-zinc-400 cursor-pointer" size={26} onClick={() => !isAnimating && pickWord()} />
+          <HelpCircle className="text-zinc-400 cursor-pointer hover:text-white transition-colors" size={26} onClick={() => alert("خمّن الكلمة المطلوبة من القاموس المعتمد.")} />
+          <RotateCcw className="text-zinc-400 cursor-pointer hover:text-white transition-colors" size={26} onClick={() => !isAnimating && pickWord()} />
         </div>
         <h1 className="text-3xl font-black tracking-tighter">كَلِمَة</h1>
-        <BarChart2 className="text-zinc-400 cursor-pointer" size={26} onClick={() => setShowStats(true)} />
+        <BarChart2 className="text-zinc-400 cursor-pointer hover:text-white transition-colors" size={26} onClick={() => setShowStats(true)} />
       </header>
 
-      <main className="flex-grow flex flex-col justify-center gap-1.5 p-2 items-center">
+      <main className="flex-grow flex flex-col justify-center gap-1.5 p-2 items-center mb-4">
         {guesses.map((g, r) => {
           const isSubmitted = r < activeRow || gameState !== "playing";
           return (
             <div key={r} className={`flex gap-1.5 ${shakeRow === r ? 'animate-shake' : ''}`}>
               {Array(5).fill("").map((_, c) => {
                 const char = r === activeRow ? currentGuess[c] : g[c];
-                const resultColor = getResultColor(char, c);
+                const resColor = getResultColor(char, c);
                 
                 return (
                   <div key={c} className="w-12 h-12 sm:w-14 sm:h-14 perspective-1000">
                     <div 
                       className={`relative w-full h-full text-center transition-transform duration-700 preserve-3d ${isSubmitted && g ? 'animate-flip' : ''}`} 
-                      style={{ animationDelay: `${isSubmitted ? c * 300 : 0}ms` }}
+                      style={{ animationDelay: `${isSubmitted ? c * 250 : 0}ms` }}
                     >
-                      {/* الوجه الأمامي: يبقى بدون لون خلفية حتى أثناء الأنيميشن */}
                       <div className={`absolute inset-0 border-2 flex items-center justify-center text-2xl font-bold backface-hidden rounded-sm ${char ? 'border-[#565758]' : 'border-[#3a3a3c]'} bg-[#121213]`}>
                         {char || ""}
                       </div>
-                      {/* الوجه الخلفي: يظهر اللون فقط هنا */}
-                      <div className={`absolute inset-0 flex items-center justify-center text-2xl font-bold backface-hidden rotate-x-180 rounded-sm border-0 ${resultColor}`}>
+                      <div className={`absolute inset-0 flex items-center justify-center text-2xl font-bold backface-hidden rotate-x-180 rounded-sm border-0 ${resColor}`}>
                         {char || ""}
                       </div>
                     </div>
@@ -214,7 +207,7 @@ const App = () => {
                 <button 
                   key={k} 
                   onClick={() => onKey(k)} 
-                  className={`${bg} h-12 rounded font-bold text-xs sm:text-base flex items-center justify-center active:scale-95 transition-all ${k === "Enter" || k === "Backspace" ? 'px-2 flex-[1.5]' : 'flex-1'} ${isAnimating ? 'opacity-40' : ''}`}
+                  className={`${bg} h-12 rounded font-bold text-xs sm:text-base flex items-center justify-center active:scale-95 transition-all ${k === "Enter" || k === "Backspace" ? 'px-2 flex-[1.5]' : 'flex-1'} ${isAnimating ? 'opacity-40 cursor-not-allowed' : ''}`}
                 >
                   {k === "Backspace" ? "حذف" : k === "Enter" ? "إدخال" : k}
                 </button>
@@ -230,8 +223,8 @@ const App = () => {
             <X className="absolute top-4 left-4 text-zinc-500 cursor-pointer" onClick={() => setShowStats(false)} />
             {gameState !== "playing" && (
               <div className="mb-6">
-                <p className="text-zinc-500 text-xs mb-1 uppercase font-bold tracking-widest">الكلمة هي</p>
-                <h2 className="text-3xl font-black mb-4 uppercase">{targetWord}</h2>
+                <p className="text-zinc-500 text-xs mb-1 uppercase font-bold tracking-widest">الكلمة الصحيحة</p>
+                <h2 className="text-3xl font-black mb-4 uppercase text-[#6aaa64]">{targetWord}</h2>
               </div>
             )}
             <h3 className="text-sm font-bold mb-4 text-zinc-300 uppercase tracking-widest">إحصائياتك</h3>
@@ -241,25 +234,22 @@ const App = () => {
               <div><div className="text-2xl text-white font-bold">{stats.streak}</div>حالي</div>
               <div><div className="text-2xl text-white font-bold">{stats.maxStreak}</div>أفضل</div>
             </div>
-            <button onClick={() => { pickWord(); setShowStats(false); }} className="w-full bg-[#6aaa64] py-4 rounded-lg font-bold">تحدي جديد</button>
+            <button onClick={() => { pickWord(); setShowStats(false); }} className="w-full bg-[#6aaa64] hover:bg-[#5f9955] py-4 rounded-lg font-bold transition-colors">تحدي جديد</button>
           </div>
         </div>
       )}
 
       <style>{`
-        @keyframes flip { 
-          0% { transform: rotateX(0deg); } 
-          100% { transform: rotateX(180deg); } 
-        }
+        @keyframes flip { 0% { transform: rotateX(0deg); } 100% { transform: rotateX(180deg); } }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
-        @keyframes fade { 0%, 100% { opacity: 0; } 10%, 90% { opacity: 1; } }
+        @keyframes fade { 0% { opacity: 0; transform: translate(-50%, -20px); } 10% { opacity: 1; transform: translate(-50%, 0); } 90% { opacity: 1; } 100% { opacity: 0; } }
         .perspective-1000 { perspective: 1000px; }
         .preserve-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; }
         .rotate-x-180 { transform: rotateX(180deg); }
         .animate-flip { animation: flip 0.6s forwards ease-in-out; }
         .animate-shake { animation: shake 0.4s ease-in-out; }
-        .animate-fade { animation: fade 1.5s forwards; }
+        .animate-fade { animation: fade 2s forwards; }
       `}</style>
     </div>
   );
