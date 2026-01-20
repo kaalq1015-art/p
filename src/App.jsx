@@ -1,316 +1,391 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { RotateCcw, BarChart2, X, HelpCircle, RefreshCw } from 'lucide-react';
-
-/**
- * KALIMA V2 - Arabic Wordle 
- * نسخة مدمجة ومحسنة: 8 محاولات وتصميم متوافق مع الكمبيوتر والجوال
- * تم إصلاح دعم لوحة المفاتيح الفيزيائية (لابتوب) وتحسين التصميم
- */
-
-// 1. دالة التوحيد لضمان معالجة الحروف بشكل صحيح (Normalization)
-const normalize = (word) => {
-  if (!word) return "";
-  return word
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .replace(/[\u064B-\u065F]/g, ""); // حذف التشكيل
-};
-
-// 2. القاموس المدمج - كلمات الحل
-const COMMON_ANSWERS = [
-  "طاوله", "مكتبه", "تفاحه", "خزانه", "نافذه", "شاشات", "ابواب", "اقلام", "اوراق", "دفاتر", 
-  "سياره", "طياره", "دراجه", "حافله", "شاحنه", "باخره", "سفينه", "محطات", "مدينه", "حديقه", 
-  "صحراء", "انهار", "امواج", "كواكب", "بلادي", "كرسينا", "نورهم", "صوتنا", "قلوبك", "عينيك",
-  "شمسنا", "قمركم", "بحرنا", "نهرهم", "جبلنا", "عالمنا", "فكرهم", "روحنا", "حلمكم", "وقتنا",
-  "كتابه", "مدرسه", "بيوتك", "جميله", "سماءك", "نخيلك", "ارضنا", "بلادي", "كرسينا", "قلمهم"
-];
-
-// 3. قاموس التحقق الشامل
-const FULL_DICTIONARY = [
-  ...COMMON_ANSWERS,
-  "منجوم", "انفطم", "تعتيد", "تصاعب", "تنابذ", "توصيم", "تعلقم", "تبرجز", "مكلكل", "انتكث", 
-  "تكميد", "انقصد", "منغوم", "انهضم", "انقصم", "انسعر", "ارتأس", "مصقوع", "تهزيز", "اندمر", 
-  "انعجم", "ازدهف", "متغيم", "انكفس", "تصييف", "قساوس", "اعتطف", "احتصد", "ملتطم", "انخطف", 
-  "رقارق", "معيوه", "معقوص", "ملجلج", "تعاسر", "تصقيع", "مدحاض", "تمنطق", "مسبول", "تفرنج", 
-  "تغفيل", "منسكب", "اندبغ", "انسطح", "تصميغ", "اعتجر", "مناطح", "مشفوط", "ابتذل", "تصعير", 
-  "تنشنش", "انهشم", "مسلطح", "تقابض", "مرابح", "ارتمس", "انفصل", "ابتعد", "اشتهى", "ارتجف"
-];
-
-const App = () => {
-  const [targetWord, setTargetWord] = useState("");
-  const [guesses, setGuesses] = useState(Array(8).fill("")); 
-  const [activeRow, setActiveRow] = useState(0);
-  const [currentGuess, setCurrentGuess] = useState("");
-  const [gameState, setGameState] = useState("playing");
-  const [letterStatuses, setLetterStatuses] = useState({});
-  const [errorMsg, setErrorMsg] = useState("");
-  const [showStats, setShowStats] = useState(false);
-  const [stats, setStats] = useState({ played: 0, wins: 0, streak: 0, maxStreak: 0 });
-  const [shakeRow, setShakeRow] = useState(-1);
-  const [isAnimating, setIsAnimating] = useState(false);
-
-  const normalizedSet = useMemo(() => {
-    return new Set(FULL_DICTIONARY.map(w => normalize(w)));
-  }, []);
-
-  const pickWord = useCallback(() => {
-    const valid = COMMON_ANSWERS.filter(w => normalize(w).length === 5);
-    const word = valid.length > 0 ? valid[Math.floor(Math.random() * valid.length)] : "كتابه";
-    setTargetWord(word);
-    setGuesses(Array(8).fill(""));
-    setActiveRow(0);
-    setCurrentGuess("");
-    setGameState("playing");
-    setLetterStatuses({});
-    setIsAnimating(false);
-    setErrorMsg("");
-  }, []);
-
-  useEffect(() => {
-    pickWord();
-    try {
-      const saved = localStorage.getItem('kalima_stats_v3');
-      if (saved) setStats(JSON.parse(saved));
-    } catch (e) { console.error("Storage failed"); }
-  }, [pickWord]);
-
-  const updateStats = useCallback((won) => {
-    setStats(prev => {
-      const s = { 
-        ...prev, 
-        played: prev.played + 1, 
-        wins: won ? prev.wins + 1 : prev.wins, 
-        streak: won ? prev.streak + 1 : 0, 
-        maxStreak: won ? Math.max(prev.maxStreak, prev.streak + 1) : prev.maxStreak 
-      };
-      localStorage.setItem('kalima_stats_v3', JSON.stringify(s));
-      return s;
-    });
-    setTimeout(() => setShowStats(true), 1500);
-  }, []);
-
-  const processGuess = useCallback(() => {
-    setIsAnimating(true);
-    const newGuesses = [...guesses];
-    newGuesses[activeRow] = currentGuess;
-    setGuesses(newGuesses);
-
-    setTimeout(() => {
-      const nTarget = normalize(targetWord);
-      const nGuess = normalize(currentGuess);
-      const isWin = nGuess === nTarget;
-      
-      const newStatuses = { ...letterStatuses };
-      currentGuess.split('').forEach((char, i) => {
-        const nChar = normalize(char);
-        let status = "absent";
-        if (nChar === nTarget[i]) status = "correct";
-        else if (nTarget.includes(nChar)) status = "present";
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>كلمة | Wordle بالعربي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
         
-        if (newStatuses[char] !== "correct") {
-          newStatuses[char] = status;
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #121213;
+            color: white;
+            overflow-x: hidden;
         }
-      });
 
-      setLetterStatuses(newStatuses);
-
-      if (isWin) {
-        setGameState("won");
-        updateStats(true);
-      } else if (activeRow === 7) {
-        setGameState("lost");
-        updateStats(false);
-      } else {
-        setActiveRow(prev => prev + 1);
-        setCurrentGuess("");
-        setIsAnimating(false);
-      }
-    }, 1500);
-  }, [currentGuess, activeRow, guesses, targetWord, letterStatuses, updateStats]);
-
-  const handleError = useCallback((msg) => {
-    setErrorMsg(msg);
-    setShakeRow(activeRow);
-    setTimeout(() => { setErrorMsg(""); setShakeRow(-1); }, 1000);
-  }, [activeRow]);
-
-  const onKey = useCallback((key) => {
-    if (gameState !== "playing" || isAnimating) return;
-
-    if (key === "Enter" || key === "إدخال") {
-      if (currentGuess.length !== 5) {
-        handleError("الكلمة ناقصة");
-        return;
-      }
-      const normalizedGuess = normalize(currentGuess);
-      if (!normalizedSet.has(normalizedGuess)) {
-        handleError("ليست في القاموس");
-        return;
-      }
-      processGuess();
-    } else if (key === "Backspace" || key === "حذف") {
-      setCurrentGuess(prev => prev.slice(0, -1));
-    } else if (currentGuess.length < 5) {
-      if (/^[\u0600-\u06FF]$/.test(key)) {
-        setCurrentGuess(prev => prev + key);
-      }
-    }
-  }, [currentGuess, gameState, isAnimating, normalizedSet, processGuess, handleError]);
-
-  // إصلاح دعم الكيبورد الفيزيائي للابتوب
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      
-      if (e.key === "Enter") {
-        e.preventDefault();
-        onKey("Enter");
-      } else if (e.key === "Backspace") {
-        e.preventDefault();
-        onKey("Backspace");
-      } else if (e.key.length === 1) {
-        // التحقق من الحرف العربي
-        if (/^[\u0600-\u06FF]$/.test(e.key)) {
-          onKey(e.key);
+        .tile {
+            width: 58px;
+            height: 58px;
+            border: 2px solid #3a3a3c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            user-select: none;
+            transition: all 0.2s ease;
         }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onKey]);
 
-  const getCellClass = (char, colIndex, rowIndex) => {
-    if (rowIndex >= activeRow && gameState === "playing") {
-      return char ? "border-[#565758] scale-105 shadow-md shadow-black/20" : "border-[#3a3a3c]";
-    }
-    
-    const nTarget = normalize(targetWord);
-    const nChar = normalize(char);
-    if (nChar === nTarget[colIndex]) return "bg-[#6aaa64] border-[#6aaa64] text-white";
-    if (nTarget.includes(nChar)) return "bg-[#c9b458] border-[#c9b458] text-white";
-    return "bg-[#3a3a3c] border-[#3a3a3c] text-white opacity-80";
-  };
+        @media (max-width: 400px) {
+            .tile { width: 50px; height: 50px; font-size: 1.5rem; }
+        }
 
-  const keyboardRows = [
-    ["ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج", "د"],
-    ["ش", "س", "ي", "ب", "ل", "ت", "ن", "م", "ك", "ط", "ذ"],
-    ["إدخال", "ر", "ز", "و", "ة", "ى", "ا", "ء", "ئ", "ؤ", "حذف"]
-  ];
+        .tile.active {
+            border-color: #565758;
+            transform: scale(1.05);
+        }
 
-  return (
-    <div className="flex flex-col h-[100dvh] bg-[#121213] text-white font-sans overflow-hidden select-none" dir="rtl">
-      
-      {errorMsg && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-2 rounded-md font-bold z-[100] shadow-2xl animate-bounce">
-          {errorMsg}
-        </div>
-      )}
+        .tile.correct { background-color: #538d4e; border-color: #538d4e; color: white; }
+        .tile.present { background-color: #b59f3b; border-color: #b59f3b; color: white; }
+        .tile.absent { background-color: #3a3a3c; border-color: #3a3a3c; color: white; }
 
-      <header className="flex justify-between items-center px-4 py-3 border-b border-[#3a3a3c] bg-[#121213] w-full max-w-2xl mx-auto flex-shrink-0">
-        <HelpCircle className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => alert("قواعد اللعبة:\n1. خمّن الكلمة المكونة من 5 حروف.\n2. لديك 8 محاولات.\n3. الأخضر: حرف صحيح في مكانه.\n4. الأصفر: حرف صحيح في مكان خاطئ.\n5. يمكنك استخدام كيبورد اللابتوب مباشرة.")} />
-        <h1 className="text-3xl font-black tracking-widest bg-gradient-to-b from-white to-zinc-500 bg-clip-text text-transparent">كَلِمَة</h1>
-        <div className="flex gap-4">
-          <RotateCcw className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => !isAnimating && pickWord()} />
-          <BarChart2 className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => setShowStats(true)} />
-        </div>
-      </header>
+        .key {
+            background-color: #818384;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.1s;
+        }
 
-      <main className="flex-grow flex flex-col justify-center items-center gap-1.5 p-4 overflow-y-auto max-w-xl mx-auto w-full">
-        {guesses.map((guess, rIndex) => (
-          <div key={rIndex} className={`flex gap-1.5 ${shakeRow === rIndex ? 'animate-shake' : ''}`}>
-            {Array(5).fill("").map((_, cIndex) => {
-              const char = rIndex === activeRow ? currentGuess[cIndex] : guess[cIndex];
-              const isSubmitted = rIndex < activeRow || (gameState !== "playing" && guess);
-              
-              return (
-                <div 
-                  key={cIndex}
-                  className={`w-10 h-10 sm:w-14 sm:h-14 border-2 flex items-center justify-center text-xl sm:text-3xl font-bold rounded-sm transition-all duration-500
-                    ${getCellClass(char, cIndex, rIndex)}
-                    ${isSubmitted ? 'animate-flip' : ''}`}
-                  style={{ animationDelay: `${isSubmitted ? cIndex * 150 : 0}ms` }}
-                >
-                  {char}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </main>
+        .key:active { background-color: #565758; }
+        .key.correct { background-color: #538d4e; }
+        .key.present { background-color: #b59f3b; }
+        .key.absent { background-color: #3a3a3c; }
 
-      <div className="p-2 space-y-2 bg-[#121213] pb-6 sm:pb-8 w-full max-w-2xl mx-auto flex-shrink-0">
-        {keyboardRows.map((row, i) => (
-          <div key={i} className="flex justify-center gap-1 sm:gap-1.5">
-            {row.map(key => {
-              const status = letterStatuses[key];
-              const bg = status === "correct" ? "bg-[#6aaa64]" : status === "present" ? "bg-[#c9b458]" : status === "absent" ? "bg-[#313132] opacity-40" : "bg-[#818384]";
-              const isSpecial = key === "إدخال" || key === "حذف";
-              
-              return (
-                <button
-                  key={key}
-                  onClick={() => onKey(key)}
-                  className={`${bg} h-12 sm:h-14 rounded-md font-bold text-sm sm:text-lg flex-1 flex items-center justify-center active:scale-95 transition-all
-                    ${isSpecial ? 'flex-[1.8] px-2 text-xs sm:text-sm bg-[#565758]' : 'hover:brightness-110'}`}
-                >
-                  {key}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-
-      {showStats && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200] backdrop-blur-sm">
-          <div className="bg-[#121213] border border-[#3a3a3c] w-full max-w-md p-8 rounded-3xl text-center shadow-2xl relative">
-            <X className="absolute top-4 left-4 text-zinc-500 cursor-pointer hover:text-white" onClick={() => setShowStats(false)} />
-            
-            {gameState !== "playing" && (
-              <div className="mb-8">
-                <p className="text-zinc-500 text-sm mb-1 uppercase tracking-widest">الكلمة الصحيحة</p>
-                <h2 className="text-5xl font-black text-[#6aaa64] tracking-widest">{targetWord}</h2>
-              </div>
-            )}
-
-            <h3 className="text-xs font-bold text-zinc-500 mb-6 uppercase tracking-[0.3em]">إحصائيات الأداء</h3>
-            <div className="grid grid-cols-4 gap-4 mb-10 border-y border-[#3a3a3c] py-6">
-              <div><div className="text-3xl font-bold">{stats.played}</div><div className="text-[10px] text-zinc-500">لعب</div></div>
-              <div><div className="text-3xl font-bold">{stats.played ? Math.round((stats.wins/stats.played)*100) : 0}</div><div className="text-[10px] text-zinc-500">فوز %</div></div>
-              <div><div className="text-3xl font-bold">{stats.streak}</div><div className="text-[10px] text-zinc-500">حالي</div></div>
-              <div><div className="text-3xl font-bold">{stats.maxStreak}</div><div className="text-[10px] text-zinc-500">أفضل</div></div>
-            </div>
-
-            <button 
-              onClick={() => { pickWord(); setShowStats(false); }}
-              className="w-full bg-[#6aaa64] hover:bg-[#5f9955] py-4 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-emerald-900/20"
-            >
-              <RefreshCw size={24} />
-              لعب مرة أخرى
-            </button>
-          </div>
-        </div>
-      )}
-
-      <style>{`
         @keyframes flip {
-          0% { transform: rotateX(0); }
-          50% { transform: rotateX(90deg); }
-          100% { transform: rotateX(0); }
+            0% { transform: rotateX(0); }
+            50% { transform: rotateX(90deg); }
+            100% { transform: rotateX(0); }
         }
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          20%, 60% { transform: translateX(-8px); }
-          40%, 80% { transform: translateX(8px); }
-        }
-        .animate-flip { animation: flip 0.6s ease-in-out forwards; }
-        .animate-shake { animation: shake 0.4s ease-in-out; }
-        * { -webkit-tap-highlight-color: transparent; scrollbar-width: none; }
-        ::-webkit-scrollbar { display: none; }
-      `}</style>
-    </div>
-  );
-};
 
-export default App;
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+
+        .flip { animation: flip 0.6s ease-in-out; }
+        .shake { animation: shake 0.5s ease-in-out; }
+        
+        .modal {
+            background-color: rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between px-4 py-2 border-b border-[#3a3a3c]">
+        <div class="w-10"></div>
+        <h1 class="text-3xl font-bold tracking-wider">كَلِمَة</h1>
+        <div class="flex gap-4">
+            <button id="statsBtn">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+                    <path d="M7 16V10M12 16V7M17 16V13" stroke-width="2"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="flex-grow flex items-center justify-center p-2">
+        <div id="grid" class="grid grid-rows-6 gap-1.5">
+            <!-- Grid rows will be generated here -->
+        </div>
+    </main>
+
+    <!-- Virtual Keyboard -->
+    <div id="keyboard" class="max-w-2xl mx-auto w-full p-2 mb-4">
+        <!-- Key rows will be generated here -->
+    </div>
+
+    <!-- Message Toast -->
+    <div id="toast" class="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-white text-black px-4 py-2 rounded-md font-bold hidden shadow-lg"></div>
+
+    <!-- Stats Modal -->
+    <div id="modal" class="modal fixed inset-0 z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-[#121213] border border-[#3a3a3c] rounded-lg p-8 max-w-sm w-full relative">
+            <button id="closeModal" class="absolute top-4 left-4 text-gray-400 hover:text-white text-2xl">✕</button>
+            <h2 class="text-center text-xl font-bold mb-6">الإحصائيات</h2>
+            <div class="flex justify-around mb-8">
+                <div class="text-center"><div id="playedCount" class="text-3xl font-bold">0</div><div class="text-xs">لعب</div></div>
+                <div class="text-center"><div id="winPercent" class="text-3xl font-bold">0</div><div class="text-xs">% فوز</div></div>
+                <div class="text-center"><div id="currentStreak" class="text-3xl font-bold">0</div><div class="text-xs">متتالي</div></div>
+            </div>
+            <button id="shareBtn" class="w-full bg-[#538d4e] py-3 rounded-md font-bold text-xl hover:bg-[#4a7d45] transition-colors">
+                مشاركة النتيجة
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Dictionary: Pool for Target Words and Validation
+        const DICTIONARY = [
+            "كتاب", "سماء", "نخيل", "جميل", "طريق", "حياة", "سعيد", "عالم", "صديق", "كبير", 
+            "صغير", "قريب", "بعيد", "حديد", "قديم", "جديد", "سريع", "بطيء", "قوي", "ضعيف",
+            "بحر", "نهر", "جبل", "قمر", "شمس", "نجم", "ارض", "مطر", "ثلج", "ريح",
+            "تفاح", "موز", "عنب", "مانجو", "توت", "خوخ", "رمان", "زيتون", "بصل", "ثوم",
+            "اسد", "نمر", "فيل", "حصان", "جمل", "ارنب", "طير", "صقر", "نحل", "نمل",
+            "احمر", "ازرق", "اخضر", "اصفر", "ابيض", "اسود", "بني", "وردي", "رماد", "ذهبي",
+            "صلاة", "صيام", "زكاة", "حلال", "حرام", "عمرة", "كعبة", "قدوس", "سلام", "مؤمن",
+            "مهندس", "طبيب", "معلم", "لاعب", "كاتب", "شاعر", "عامل", "تاجر", "قاضي", "جندي",
+            "دولة", "شعب", "وطن", "علم", "نصر", "فوز", "خسر", "لعب", "درس", "كتب"
+        ];
+
+        const config = {
+            maxAttempts: 6,
+            wordLength: 5,
+            appId: 'arabic-wordle-pro-v2'
+        };
+
+        let state = {
+            targetWord: '',
+            currentRow: 0,
+            currentTile: 0,
+            guesses: Array(6).fill(''),
+            gameOver: false,
+            stats: JSON.parse(localStorage.getItem('wordle_stats_v2')) || { played: 0, wins: 0, streak: 0 }
+        };
+
+        function normalize(word) {
+            if (!word) return "";
+            return word
+                .replace(/[أإآ]/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي')
+                .replace(/ئ/g, 'ي')
+                .replace(/ؤ/g, 'و');
+        }
+
+        function getDailyWord() {
+            const today = new Date();
+            const seed = today.getFullYear() * 1000 + today.getMonth() * 100 + today.getDate();
+            // We ensure the word is 5 characters by padding if necessary (though our dictionary should be clean)
+            let word = DICTIONARY[seed % DICTIONARY.length];
+            return word.padEnd(5, 'ه').substring(0, 5);
+        }
+
+        function init() {
+            state.targetWord = getDailyWord();
+            createGrid();
+            createKeyboard();
+            setupEventListeners();
+        }
+
+        function createGrid() {
+            const grid = document.getElementById('grid');
+            for (let i = 0; i < config.maxAttempts; i++) {
+                const row = document.createElement('div');
+                row.id = `row-${i}`;
+                row.className = 'grid grid-cols-5 gap-1.5';
+                for (let j = 0; j < config.wordLength; j++) {
+                    const tile = document.createElement('div');
+                    tile.id = `tile-${i}-${j}`;
+                    tile.className = 'tile';
+                    row.appendChild(tile);
+                }
+                grid.appendChild(row);
+            }
+        }
+
+        function createKeyboard() {
+            const keyboard = document.getElementById('keyboard');
+            const layout = [
+                ['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج'],
+                ['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط'],
+                ['Enter', 'ئ', 'ء', 'ؤ', 'ر', 'لا', 'ى', 'ة', 'و', 'ز', 'د', 'ذ', 'Delete']
+            ];
+
+            layout.forEach(rowArr => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-center gap-1.5 mb-2 w-full';
+                rowArr.forEach(key => {
+                    const btn = document.createElement('button');
+                    btn.textContent = key === 'Delete' ? '⌫' : (key === 'Enter' ? 'تأكيد' : key);
+                    btn.className = `key h-14 flex items-center justify-center font-bold text-sm sm:text-base ${
+                        (key === 'Enter' || key === 'Delete') ? 'px-3 sm:px-5 text-xs bg-[#565758]' : 'flex-1'
+                    }`;
+                    btn.dataset.key = key;
+                    btn.onclick = () => handleInput(key);
+                    row.appendChild(btn);
+                });
+                keyboard.appendChild(row);
+            });
+        }
+
+        function handleInput(key) {
+            if (state.gameOver) return;
+
+            if (key === 'Delete' || key === 'Backspace') {
+                if (state.currentTile > 0) {
+                    state.currentTile--;
+                    const tile = document.getElementById(`tile-${state.currentRow}-${state.currentTile}`);
+                    tile.textContent = '';
+                    tile.classList.remove('active');
+                    state.guesses[state.currentRow] = state.guesses[state.currentRow].slice(0, -1);
+                }
+            } else if (key === 'Enter') {
+                submitGuess();
+            } else if (state.currentTile < config.wordLength) {
+                // Check if it's an Arabic character
+                if (/[\u0600-\u06FF]/.test(key) && key.length === 1) {
+                    const tile = document.getElementById(`tile-${state.currentRow}-${state.currentTile}`);
+                    tile.textContent = key;
+                    tile.classList.add('active');
+                    state.guesses[state.currentRow] += key;
+                    state.currentTile++;
+                }
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 2500);
+        }
+
+        function submitGuess() {
+            const guess = state.guesses[state.currentRow];
+            
+            if (guess.length < config.wordLength) {
+                showToast("الكلمة قصيرة جداً");
+                shakeRow();
+                return;
+            }
+
+            // Word Validation: Check if word exists in our dictionary (normalized)
+            const normalizedGuess = normalize(guess);
+            const isValid = DICTIONARY.some(w => normalize(w) === normalizedGuess);
+            
+            // Note: In real Arwordle, they have a massive dictionary. 
+            // Here we check against our pool for demonstration.
+            if (!isValid && !DICTIONARY.includes(guess)) {
+                showToast("الكلمة غير موجودة في القاموس");
+                shakeRow();
+                return;
+            }
+
+            revealRow(state.currentRow, guess);
+        }
+
+        function shakeRow() {
+            const row = document.getElementById(`row-${state.currentRow}`);
+            row.classList.add('shake');
+            setTimeout(() => row.classList.remove('shake'), 500);
+        }
+
+        function revealRow(rowIdx, guess) {
+            const normalizedGuess = normalize(guess);
+            const normalizedTarget = normalize(state.targetWord);
+            const tiles = [];
+            
+            for(let i=0; i<5; i++) tiles.push(document.getElementById(`tile-${rowIdx}-${i}`));
+
+            let targetChars = normalizedTarget.split('');
+            let results = Array(5).fill('absent');
+
+            // Pass 1: Correct position
+            for (let i = 0; i < 5; i++) {
+                if (normalizedGuess[i] === normalizedTarget[i]) {
+                    results[i] = 'correct';
+                    targetChars[i] = null;
+                }
+            }
+
+            // Pass 2: Present but wrong position
+            for (let i = 0; i < 5; i++) {
+                if (results[i] === 'absent' && targetChars.includes(normalizedGuess[i])) {
+                    results[i] = 'present';
+                    targetChars[targetChars.indexOf(normalizedGuess[i])] = null;
+                }
+            }
+
+            // Animation and Style update
+            tiles.forEach((tile, i) => {
+                setTimeout(() => {
+                    tile.classList.add('flip');
+                    setTimeout(() => {
+                        tile.classList.add(results[i]);
+                        updateKeyStatus(guess[i], results[i]);
+                    }, 300);
+                }, i * 150);
+            });
+
+            setTimeout(() => {
+                if (normalizedGuess === normalizedTarget) {
+                    endGame(true);
+                } else if (state.currentRow === config.maxAttempts - 1) {
+                    endGame(false);
+                } else {
+                    state.currentRow++;
+                    state.currentTile = 0;
+                }
+            }, 1800);
+        }
+
+        function updateKeyStatus(char, status) {
+            const keys = document.querySelectorAll(`.key[data-key="${char}"]`);
+            keys.forEach(key => {
+                if (status === 'correct') {
+                    key.classList.remove('present', 'absent');
+                    key.classList.add('correct');
+                } else if (status === 'present' && !key.classList.contains('correct')) {
+                    key.classList.add('present');
+                } else if (status === 'absent' && !key.classList.contains('correct') && !key.classList.contains('present')) {
+                    key.classList.add('absent');
+                }
+            });
+        }
+
+        function endGame(win) {
+            state.gameOver = true;
+            state.stats.played++;
+            if (win) {
+                state.stats.wins++;
+                state.stats.streak++;
+                setTimeout(() => showToast("أحسنت! تخمين صحيح"), 500);
+            } else {
+                state.stats.streak = 0;
+                setTimeout(() => showToast(`للأسف! الكلمة كانت: ${state.targetWord}`), 500);
+            }
+            localStorage.setItem('wordle_stats_v2', JSON.stringify(state.stats));
+            setTimeout(showStats, 2500);
+        }
+
+        function showStats() {
+            document.getElementById('playedCount').textContent = state.stats.played;
+            const winPct = state.stats.played > 0 ? Math.round((state.stats.wins / state.stats.played) * 100) : 0;
+            document.getElementById('winPercent').textContent = winPct;
+            document.getElementById('currentStreak').textContent = state.stats.streak;
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function setupEventListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleInput('Enter');
+                else if (e.key === 'Backspace') handleInput('Delete');
+                else handleInput(e.key);
+            });
+            
+            document.getElementById('statsBtn').onclick = showStats;
+            document.getElementById('closeModal').onclick = () => document.getElementById('modal').classList.add('hidden');
+            
+            document.getElementById('shareBtn').onclick = () => {
+                const resultEmoji = state.guesses.slice(0, state.currentRow + 1).map(g => "⬜").join(""); // Placeholder logic
+                const text = `لعبة كلمة 🧩\nالنتيجة: ${state.gameOver && state.guesses[state.currentRow] === state.targetWord ? state.currentRow + 1 : 'X'}/6\n#كلمة #Wordle_العربية`;
+                navigator.clipboard.writeText(text);
+                showToast("تم نسخ النتيجة");
+            };
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
