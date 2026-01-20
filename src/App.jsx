@@ -3,7 +3,7 @@ import { RotateCcw, BarChart2, X, HelpCircle, RefreshCw } from 'lucide-react';
 
 /**
  * KALIMA V2 - Arabic Wordle 
- * نسخة مدمجة بالكامل لتعمل على GitHub دون الحاجة لملفات خارجية.
+ * نسخة مدمجة ومحسنة: 8 محاولات وتصميم متوافق مع الكمبيوتر والجوال
  */
 
 // 1. دالة التوحيد لضمان معالجة الحروف بشكل صحيح (Normalization)
@@ -16,7 +16,7 @@ const normalize = (word) => {
     .replace(/[\u064B-\u065F]/g, ""); // حذف التشكيل
 };
 
-// 2. القاموس المدمج - كلمات الحل (التي يختار منها النظام)
+// 2. القاموس المدمج - كلمات الحل
 const COMMON_ANSWERS = [
   "طاوله", "مكتبه", "تفاحه", "خزانه", "نافذه", "شاشات", "ابواب", "اقلام", "اوراق", "دفاتر", 
   "سياره", "طياره", "دراجه", "حافله", "شاحنه", "باخره", "سفينه", "محطات", "مدينه", "حديقه", 
@@ -25,7 +25,7 @@ const COMMON_ANSWERS = [
   "كتابه", "مدرسه", "بيوتك", "جميله", "سماءك", "نخيلك", "ارضنا", "بلادي", "كرسينا", "قلمهم"
 ];
 
-// 3. قاموس التحقق الشامل (تم دمج كلمات من ملف dictionary.js لضمان الشمولية)
+// 3. قاموس التحقق الشامل
 const FULL_DICTIONARY = [
   ...COMMON_ANSWERS,
   "منجوم", "انفطم", "تعتيد", "تصاعب", "تنابذ", "توصيم", "تعلقم", "تبرجز", "مكلكل", "انتكث", 
@@ -38,7 +38,7 @@ const FULL_DICTIONARY = [
 
 const App = () => {
   const [targetWord, setTargetWord] = useState("");
-  const [guesses, setGuesses] = useState(Array(6).fill(""));
+  const [guesses, setGuesses] = useState(Array(8).fill("")); // تعديل ليكون 8 محاولات
   const [activeRow, setActiveRow] = useState(0);
   const [currentGuess, setCurrentGuess] = useState("");
   const [gameState, setGameState] = useState("playing");
@@ -49,7 +49,6 @@ const App = () => {
   const [shakeRow, setShakeRow] = useState(-1);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // استخدام Set لسرعة البحث الفوري O(1)
   const normalizedSet = useMemo(() => {
     return new Set(FULL_DICTIONARY.map(w => normalize(w)));
   }, []);
@@ -58,7 +57,7 @@ const App = () => {
     const valid = COMMON_ANSWERS.filter(w => normalize(w).length === 5);
     const word = valid.length > 0 ? valid[Math.floor(Math.random() * valid.length)] : "كتابه";
     setTargetWord(word);
-    setGuesses(Array(6).fill(""));
+    setGuesses(Array(8).fill("")); // إعادة الضبط لـ 8 محاولات
     setActiveRow(0);
     setCurrentGuess("");
     setGameState("playing");
@@ -70,7 +69,7 @@ const App = () => {
   useEffect(() => {
     pickWord();
     try {
-      const saved = localStorage.getItem('kalima_stats_v2');
+      const saved = localStorage.getItem('kalima_stats_v3');
       if (saved) setStats(JSON.parse(saved));
     } catch (e) { console.error("Storage failed"); }
   }, [pickWord]);
@@ -112,7 +111,6 @@ const App = () => {
     newGuesses[activeRow] = currentGuess;
     setGuesses(newGuesses);
 
-    // توقيت متزامن مع حركة القلب (Flip)
     setTimeout(() => {
       const nTarget = normalize(targetWord);
       const nGuess = normalize(currentGuess);
@@ -135,7 +133,7 @@ const App = () => {
       if (isWin) {
         setGameState("won");
         updateStats(true);
-      } else if (activeRow === 5) {
+      } else if (activeRow === 7) { // المحاولة الأخيرة رقم 8 (0-7)
         setGameState("lost");
         updateStats(false);
       } else {
@@ -166,7 +164,7 @@ const App = () => {
       maxStreak: won ? Math.max(stats.maxStreak, stats.streak + 1) : stats.maxStreak 
     };
     setStats(s);
-    localStorage.setItem('kalima_stats_v2', JSON.stringify(s));
+    localStorage.setItem('kalima_stats_v3', JSON.stringify(s));
     setTimeout(() => setShowStats(true), 1500);
   };
 
@@ -189,26 +187,27 @@ const App = () => {
   ];
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#121213] text-white font-sans overflow-hidden select-none touch-none" dir="rtl">
-      {/* التنبيهات */}
+    <div className="flex flex-col h-[100dvh] bg-[#121213] text-white font-sans overflow-hidden select-none" dir="rtl">
+      
+      {/* التنبيهات المنبثقة */}
       {errorMsg && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-2 rounded-md font-bold z-[100] shadow-2xl animate-bounce">
           {errorMsg}
         </div>
       )}
 
-      {/* الرأس */}
-      <header className="flex justify-between items-center px-4 py-2 border-b border-[#3a3a3c] bg-[#121213]">
-        <HelpCircle className="text-zinc-500 cursor-pointer hover:text-white" size={24} onClick={() => alert("قواعد اللعبة:\n1. خمّن الكلمة المكونة من 5 حروف.\n2. الأخضر: حرف صحيح في مكانه.\n3. الأصفر: حرف صحيح في مكان خاطئ.\n4. الرمادي: حرف غير موجود بالكلمة.")} />
+      {/* الرأس - محدود العرض للكمبيوتر */}
+      <header className="flex justify-between items-center px-4 py-3 border-b border-[#3a3a3c] bg-[#121213] w-full max-w-2xl mx-auto">
+        <HelpCircle className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => alert("قواعد اللعبة:\n1. خمّن الكلمة المكونة من 5 حروف.\n2. لديك 8 محاولات.\n3. الأخضر: حرف صحيح في مكانه.\n4. الأصفر: حرف صحيح في مكان خاطئ.")} />
         <h1 className="text-3xl font-black tracking-widest bg-gradient-to-b from-white to-zinc-500 bg-clip-text text-transparent">كَلِمَة</h1>
         <div className="flex gap-4">
-          <RotateCcw className="text-zinc-500 cursor-pointer hover:text-white" size={24} onClick={() => !isAnimating && pickWord()} />
-          <BarChart2 className="text-zinc-500 cursor-pointer hover:text-white" size={24} onClick={() => setShowStats(true)} />
+          <RotateCcw className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => !isAnimating && pickWord()} />
+          <BarChart2 className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => setShowStats(true)} />
         </div>
       </header>
 
-      {/* منطقة اللعب */}
-      <main className="flex-grow flex flex-col justify-center items-center gap-2 p-2 overflow-y-auto">
+      {/* منطقة اللعب - تم تصغير الخلايا قليلاً لتناسب 8 صفوف */}
+      <main className="flex-grow flex flex-col justify-center items-center gap-1.5 p-2 overflow-y-auto max-w-2xl mx-auto w-full">
         {guesses.map((guess, rIndex) => (
           <div key={rIndex} className={`flex gap-1.5 ${shakeRow === rIndex ? 'animate-shake' : ''}`}>
             {Array(5).fill("").map((_, cIndex) => {
@@ -218,7 +217,7 @@ const App = () => {
               return (
                 <div 
                   key={cIndex}
-                  className={`w-12 h-12 sm:w-16 sm:h-16 border-2 flex items-center justify-center text-2xl sm:text-4xl font-bold rounded-sm transition-all duration-500
+                  className={`w-11 h-11 sm:w-14 sm:h-14 border-2 flex items-center justify-center text-xl sm:text-3xl font-bold rounded-sm transition-all duration-500
                     ${getCellClass(char, cIndex, rIndex)}
                     ${isSubmitted ? 'animate-flip' : ''}`}
                   style={{ animationDelay: `${isSubmitted ? cIndex * 150 : 0}ms` }}
@@ -231,10 +230,10 @@ const App = () => {
         ))}
       </main>
 
-      {/* لوحة المفاتيح - محسنة للمس */}
-      <div className="p-1 sm:p-2 space-y-1.5 bg-[#121213] pb-8 sm:pb-10">
+      {/* لوحة المفاتيح - محدودة العرض ومتناسقة مع الكمبيوتر */}
+      <div className="p-2 space-y-2 bg-[#121213] pb-6 sm:pb-8 w-full max-w-3xl mx-auto">
         {keyboardRows.map((row, i) => (
-          <div key={i} className="flex justify-center gap-1 sm:gap-2">
+          <div key={i} className="flex justify-center gap-1 sm:gap-1.5">
             {row.map(key => {
               const status = letterStatuses[key];
               const bg = status === "correct" ? "bg-[#6aaa64]" : status === "present" ? "bg-[#c9b458]" : status === "absent" ? "bg-[#313132] opacity-50" : "bg-[#818384]";
@@ -244,8 +243,8 @@ const App = () => {
                 <button
                   key={key}
                   onClick={() => onKey(key)}
-                  className={`${bg} h-12 sm:h-14 rounded font-bold text-sm sm:text-xl flex-1 flex items-center justify-center active:scale-90 transition-transform touch-manipulation
-                    ${isSpecial ? 'flex-[1.8] text-xs sm:text-sm px-2' : ''}`}
+                  className={`${bg} h-12 sm:h-14 rounded-md font-bold text-sm sm:text-lg flex-1 flex items-center justify-center active:scale-95 transition-all
+                    ${isSpecial ? 'flex-[1.8] px-2 text-xs sm:text-sm' : 'hover:brightness-110'}`}
                 >
                   {key}
                 </button>
@@ -258,12 +257,12 @@ const App = () => {
       {/* نافذة الإحصائيات */}
       {showStats && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200] backdrop-blur-sm">
-          <div className="bg-[#121213] border border-[#3a3a3c] w-full max-w-sm p-8 rounded-3xl text-center shadow-2xl relative">
-            <X className="absolute top-4 left-4 text-zinc-500 cursor-pointer" onClick={() => setShowStats(false)} />
+          <div className="bg-[#121213] border border-[#3a3a3c] w-full max-w-md p-8 rounded-3xl text-center shadow-2xl relative">
+            <X className="absolute top-4 left-4 text-zinc-500 cursor-pointer hover:text-white" onClick={() => setShowStats(false)} />
             
             {gameState !== "playing" && (
               <div className="mb-8">
-                <p className="text-zinc-500 text-sm mb-1">الكلمة الصحيحة كانت</p>
+                <p className="text-zinc-500 text-sm mb-1 uppercase tracking-widest">الكلمة الصحيحة</p>
                 <h2 className="text-5xl font-black text-[#6aaa64] tracking-widest">{targetWord}</h2>
               </div>
             )}
@@ -300,7 +299,8 @@ const App = () => {
         }
         .animate-flip { animation: flip 0.6s ease-in-out forwards; }
         .animate-shake { animation: shake 0.4s ease-in-out; }
-        * { -webkit-tap-highlight-color: transparent; }
+        * { -webkit-tap-highlight-color: transparent; scrollbar-width: none; }
+        ::-webkit-scrollbar { display: none; }
       `}</style>
     </div>
   );
