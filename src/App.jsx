@@ -4,6 +4,7 @@ import { RotateCcw, BarChart2, X, HelpCircle, RefreshCw } from 'lucide-react';
 /**
  * KALIMA V2 - Arabic Wordle 
  * نسخة مدمجة ومحسنة: 8 محاولات وتصميم متوافق مع الكمبيوتر والجوال
+ * تم إصلاح دعم لوحة المفاتيح الفيزيائية (لابتوب) وتحسين التصميم
  */
 
 // 1. دالة التوحيد لضمان معالجة الحروف بشكل صحيح (Normalization)
@@ -38,7 +39,7 @@ const FULL_DICTIONARY = [
 
 const App = () => {
   const [targetWord, setTargetWord] = useState("");
-  const [guesses, setGuesses] = useState(Array(8).fill("")); // تعديل ليكون 8 محاولات
+  const [guesses, setGuesses] = useState(Array(8).fill("")); 
   const [activeRow, setActiveRow] = useState(0);
   const [currentGuess, setCurrentGuess] = useState("");
   const [gameState, setGameState] = useState("playing");
@@ -57,7 +58,7 @@ const App = () => {
     const valid = COMMON_ANSWERS.filter(w => normalize(w).length === 5);
     const word = valid.length > 0 ? valid[Math.floor(Math.random() * valid.length)] : "كتابه";
     setTargetWord(word);
-    setGuesses(Array(8).fill("")); // إعادة الضبط لـ 8 محاولات
+    setGuesses(Array(8).fill(""));
     setActiveRow(0);
     setCurrentGuess("");
     setGameState("playing");
@@ -74,38 +75,22 @@ const App = () => {
     } catch (e) { console.error("Storage failed"); }
   }, [pickWord]);
 
-  const onKey = useCallback((key) => {
-    if (gameState !== "playing" || isAnimating) return;
+  const updateStats = useCallback((won) => {
+    setStats(prev => {
+      const s = { 
+        ...prev, 
+        played: prev.played + 1, 
+        wins: won ? prev.wins + 1 : prev.wins, 
+        streak: won ? prev.streak + 1 : 0, 
+        maxStreak: won ? Math.max(prev.maxStreak, prev.streak + 1) : prev.maxStreak 
+      };
+      localStorage.setItem('kalima_stats_v3', JSON.stringify(s));
+      return s;
+    });
+    setTimeout(() => setShowStats(true), 1500);
+  }, []);
 
-    if (key === "Enter" || key === "إدخال") {
-      if (currentGuess.length !== 5) {
-        handleError("الكلمة ناقصة");
-        return;
-      }
-
-      const normalizedGuess = normalize(currentGuess);
-      if (!normalizedSet.has(normalizedGuess)) {
-        handleError("ليست في القاموس");
-        return;
-      }
-
-      processGuess();
-    } else if (key === "Backspace" || key === "حذف") {
-      setCurrentGuess(prev => prev.slice(0, -1));
-    } else if (currentGuess.length < 5) {
-      if (/^[\u0600-\u06FF]$/.test(key)) {
-        setCurrentGuess(prev => prev + key);
-      }
-    }
-  }, [currentGuess, activeRow, gameState, isAnimating, normalizedSet]);
-
-  const handleError = (msg) => {
-    setErrorMsg(msg);
-    setShakeRow(activeRow);
-    setTimeout(() => { setErrorMsg(""); setShakeRow(-1); }, 1000);
-  };
-
-  const processGuess = () => {
+  const processGuess = useCallback(() => {
     setIsAnimating(true);
     const newGuesses = [...guesses];
     newGuesses[activeRow] = currentGuess;
@@ -133,7 +118,7 @@ const App = () => {
       if (isWin) {
         setGameState("won");
         updateStats(true);
-      } else if (activeRow === 7) { // المحاولة الأخيرة رقم 8 (0-7)
+      } else if (activeRow === 7) {
         setGameState("lost");
         updateStats(false);
       } else {
@@ -142,35 +127,62 @@ const App = () => {
         setIsAnimating(false);
       }
     }, 1500);
-  };
+  }, [currentGuess, activeRow, guesses, targetWord, letterStatuses, updateStats]);
 
+  const handleError = useCallback((msg) => {
+    setErrorMsg(msg);
+    setShakeRow(activeRow);
+    setTimeout(() => { setErrorMsg(""); setShakeRow(-1); }, 1000);
+  }, [activeRow]);
+
+  const onKey = useCallback((key) => {
+    if (gameState !== "playing" || isAnimating) return;
+
+    if (key === "Enter" || key === "إدخال") {
+      if (currentGuess.length !== 5) {
+        handleError("الكلمة ناقصة");
+        return;
+      }
+      const normalizedGuess = normalize(currentGuess);
+      if (!normalizedSet.has(normalizedGuess)) {
+        handleError("ليست في القاموس");
+        return;
+      }
+      processGuess();
+    } else if (key === "Backspace" || key === "حذف") {
+      setCurrentGuess(prev => prev.slice(0, -1));
+    } else if (currentGuess.length < 5) {
+      if (/^[\u0600-\u06FF]$/.test(key)) {
+        setCurrentGuess(prev => prev + key);
+      }
+    }
+  }, [currentGuess, gameState, isAnimating, normalizedSet, processGuess, handleError]);
+
+  // إصلاح دعم الكيبورد الفيزيائي للابتوب
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.ctrlKey || e.metaKey) return;
-      if (e.key === "Enter") onKey("Enter");
-      else if (e.key === "Backspace") onKey("Backspace");
-      else if (e.key.length === 1) onKey(e.key);
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onKey("Enter");
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        onKey("Backspace");
+      } else if (e.key.length === 1) {
+        // التحقق من الحرف العربي
+        if (/^[\u0600-\u06FF]$/.test(e.key)) {
+          onKey(e.key);
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onKey]);
 
-  const updateStats = (won) => {
-    const s = { 
-      ...stats, 
-      played: stats.played + 1, 
-      wins: won ? stats.wins + 1 : stats.wins, 
-      streak: won ? stats.streak + 1 : 0, 
-      maxStreak: won ? Math.max(stats.maxStreak, stats.streak + 1) : stats.maxStreak 
-    };
-    setStats(s);
-    localStorage.setItem('kalima_stats_v3', JSON.stringify(s));
-    setTimeout(() => setShowStats(true), 1500);
-  };
-
   const getCellClass = (char, colIndex, rowIndex) => {
     if (rowIndex >= activeRow && gameState === "playing") {
-      return char ? "border-[#565758] scale-105 shadow-sm" : "border-[#3a3a3c]";
+      return char ? "border-[#565758] scale-105 shadow-md shadow-black/20" : "border-[#3a3a3c]";
     }
     
     const nTarget = normalize(targetWord);
@@ -189,16 +201,14 @@ const App = () => {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#121213] text-white font-sans overflow-hidden select-none" dir="rtl">
       
-      {/* التنبيهات المنبثقة */}
       {errorMsg && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-2 rounded-md font-bold z-[100] shadow-2xl animate-bounce">
           {errorMsg}
         </div>
       )}
 
-      {/* الرأس - محدود العرض للكمبيوتر */}
-      <header className="flex justify-between items-center px-4 py-3 border-b border-[#3a3a3c] bg-[#121213] w-full max-w-2xl mx-auto">
-        <HelpCircle className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => alert("قواعد اللعبة:\n1. خمّن الكلمة المكونة من 5 حروف.\n2. لديك 8 محاولات.\n3. الأخضر: حرف صحيح في مكانه.\n4. الأصفر: حرف صحيح في مكان خاطئ.")} />
+      <header className="flex justify-between items-center px-4 py-3 border-b border-[#3a3a3c] bg-[#121213] w-full max-w-2xl mx-auto flex-shrink-0">
+        <HelpCircle className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => alert("قواعد اللعبة:\n1. خمّن الكلمة المكونة من 5 حروف.\n2. لديك 8 محاولات.\n3. الأخضر: حرف صحيح في مكانه.\n4. الأصفر: حرف صحيح في مكان خاطئ.\n5. يمكنك استخدام كيبورد اللابتوب مباشرة.")} />
         <h1 className="text-3xl font-black tracking-widest bg-gradient-to-b from-white to-zinc-500 bg-clip-text text-transparent">كَلِمَة</h1>
         <div className="flex gap-4">
           <RotateCcw className="text-zinc-500 cursor-pointer hover:text-white transition-colors" size={24} onClick={() => !isAnimating && pickWord()} />
@@ -206,8 +216,7 @@ const App = () => {
         </div>
       </header>
 
-      {/* منطقة اللعب - تم تصغير الخلايا قليلاً لتناسب 8 صفوف */}
-      <main className="flex-grow flex flex-col justify-center items-center gap-1.5 p-2 overflow-y-auto max-w-2xl mx-auto w-full">
+      <main className="flex-grow flex flex-col justify-center items-center gap-1.5 p-4 overflow-y-auto max-w-xl mx-auto w-full">
         {guesses.map((guess, rIndex) => (
           <div key={rIndex} className={`flex gap-1.5 ${shakeRow === rIndex ? 'animate-shake' : ''}`}>
             {Array(5).fill("").map((_, cIndex) => {
@@ -217,7 +226,7 @@ const App = () => {
               return (
                 <div 
                   key={cIndex}
-                  className={`w-11 h-11 sm:w-14 sm:h-14 border-2 flex items-center justify-center text-xl sm:text-3xl font-bold rounded-sm transition-all duration-500
+                  className={`w-10 h-10 sm:w-14 sm:h-14 border-2 flex items-center justify-center text-xl sm:text-3xl font-bold rounded-sm transition-all duration-500
                     ${getCellClass(char, cIndex, rIndex)}
                     ${isSubmitted ? 'animate-flip' : ''}`}
                   style={{ animationDelay: `${isSubmitted ? cIndex * 150 : 0}ms` }}
@@ -230,13 +239,12 @@ const App = () => {
         ))}
       </main>
 
-      {/* لوحة المفاتيح - محدودة العرض ومتناسقة مع الكمبيوتر */}
-      <div className="p-2 space-y-2 bg-[#121213] pb-6 sm:pb-8 w-full max-w-3xl mx-auto">
+      <div className="p-2 space-y-2 bg-[#121213] pb-6 sm:pb-8 w-full max-w-2xl mx-auto flex-shrink-0">
         {keyboardRows.map((row, i) => (
           <div key={i} className="flex justify-center gap-1 sm:gap-1.5">
             {row.map(key => {
               const status = letterStatuses[key];
-              const bg = status === "correct" ? "bg-[#6aaa64]" : status === "present" ? "bg-[#c9b458]" : status === "absent" ? "bg-[#313132] opacity-50" : "bg-[#818384]";
+              const bg = status === "correct" ? "bg-[#6aaa64]" : status === "present" ? "bg-[#c9b458]" : status === "absent" ? "bg-[#313132] opacity-40" : "bg-[#818384]";
               const isSpecial = key === "إدخال" || key === "حذف";
               
               return (
@@ -244,7 +252,7 @@ const App = () => {
                   key={key}
                   onClick={() => onKey(key)}
                   className={`${bg} h-12 sm:h-14 rounded-md font-bold text-sm sm:text-lg flex-1 flex items-center justify-center active:scale-95 transition-all
-                    ${isSpecial ? 'flex-[1.8] px-2 text-xs sm:text-sm' : 'hover:brightness-110'}`}
+                    ${isSpecial ? 'flex-[1.8] px-2 text-xs sm:text-sm bg-[#565758]' : 'hover:brightness-110'}`}
                 >
                   {key}
                 </button>
@@ -254,7 +262,6 @@ const App = () => {
         ))}
       </div>
 
-      {/* نافذة الإحصائيات */}
       {showStats && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[200] backdrop-blur-sm">
           <div className="bg-[#121213] border border-[#3a3a3c] w-full max-w-md p-8 rounded-3xl text-center shadow-2xl relative">
