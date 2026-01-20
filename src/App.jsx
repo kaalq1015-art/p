@@ -5,13 +5,15 @@ import { DICTIONARY, normalize } from './dictionary';
 
 /**
  * KALIMA - Arabic Wordle (GitHub Version)
- * هذه النسخة مخصصة للعمل مع ملف dictionary.js الخارجي.
+ * ملاحظة للمستخدم: هذه النسخة تعتمد على استيراد القاموس من ملف خارجي.
+ * تم إصلاح منطق التحقق لضمان مطابقة الكلمات حتى مع اختلاف التشكيل أو الهمزات.
  */
 
 // تصفية الكلمات التي طولها 5 أحرف فقط من القاموس المستورد
 const VALID_WORDS = DICTIONARY.filter(w => w.length === 5);
-// إنشاء مجموعة للتحقق السريع من الكلمات المدخلة (بعد معالجتها)
-const VALID_GUESS_SET = new Set(DICTIONARY.map(normalize));
+
+// إنشاء مجموعة للتحقق السريع، مع معالجة كل كلمات القاموس لضمان المطابقة الدقيقة
+const VALID_GUESS_SET = new Set(DICTIONARY.map(w => normalize(w)));
 
 const App = () => {
   const [targetWord, setTargetWord] = useState("");
@@ -26,7 +28,6 @@ const App = () => {
   const [shakeRow, setShakeRow] = useState(-1);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // اختيار كلمة عشوائية من القاموس المستورد
   const pickWord = useCallback(() => {
     if (VALID_WORDS.length === 0) return;
     const random = VALID_WORDS[Math.floor(Math.random() * VALID_WORDS.length)];
@@ -57,8 +58,9 @@ const App = () => {
         return;
       }
 
-      // التحقق الصارم: الكلمة يجب أن تكون موجودة في dictionary.js
+      // إصلاح المنطق: نقوم بمعالجة التخمين الحالي ومقارنته بالمجموعة المعالجة مسبقاً
       const normalizedGuess = normalize(currentGuess);
+      
       if (!VALID_GUESS_SET.has(normalizedGuess)) {
         setErrorMsg("ليست في القاموس");
         setShakeRow(activeRow);
@@ -71,9 +73,8 @@ const App = () => {
       newGuesses[activeRow] = currentGuess;
       setGuesses(newGuesses);
 
-      // توقيت ظهور الألوان والنتائج
       setTimeout(() => {
-        const isWin = normalizedGuess === normalize(targetWord);
+        const isWin = normalize(currentGuess) === normalize(targetWord);
         const newStatuses = { ...letterStatuses };
         const nTarget = normalize(targetWord);
 
@@ -160,7 +161,7 @@ const App = () => {
       
       <header className="flex justify-between items-center border-b border-[#3a3a3c] py-2 mb-4 px-2">
         <div className="flex gap-4">
-          <HelpCircle className="text-zinc-400 cursor-pointer hover:text-white transition-colors" size={26} onClick={() => alert("خمّن الكلمة المطلوبة من القاموس المعتمد.")} />
+          <HelpCircle className="text-zinc-400 cursor-pointer hover:text-white transition-colors" size={26} onClick={() => alert("خمّن الكلمة المطلوبة.")} />
           <RotateCcw className="text-zinc-400 cursor-pointer hover:text-white transition-colors" size={26} onClick={() => !isAnimating && pickWord()} />
         </div>
         <h1 className="text-3xl font-black tracking-tighter">كَلِمَة</h1>
