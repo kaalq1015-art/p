@@ -740,16 +740,11 @@
         }
 
         function startNewGame() {
-            // اختيار كلمة عشوائية من قائمة الكلمات الصحيحة (5 أحرف فقط)
-            let filteredWords = CORRECT_WORDS.filter(word => word.length === 5);
-            
-            // إذا لم توجد كلمات من 5 أحرف، استخدم كلمات من القائمة المسموحة
-            if (filteredWords.length === 0) {
-                filteredWords = ALLOWED_WORDS.filter(word => word.length === 5);
-            }
+            // اختيار كلمة عشوائية من 5 أحرف
+            let filteredWords = WORD_LIST.filter(word => word.length === 5);
             
             if (filteredWords.length === 0) {
-                filteredWords = ["مكتب", "كتاب", "قلم", "ورقة", "باب"];
+                filteredWords = ["مدرسة", "كتاب", "قلم", "ورقة", "باب"];
             }
             
             gameState.targetWord = filteredWords[Math.floor(Math.random() * filteredWords.length)];
@@ -830,8 +825,7 @@
         }
 
         function isValidWord(word) {
-            // التحقق من القائمة المسموحة
-            return ALLOWED_WORDS.includes(word);
+            return DICTIONARY.includes(word);
         }
 
         function evaluateGuess() {
